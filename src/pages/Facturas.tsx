@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Search, FileText, Ban, Download, Printer } from "lucide-react";
+import { Search, FileText, Ban, Download, Printer, MessageCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
 import { exportToExcel } from "@/lib/exportUtils";
@@ -150,6 +150,15 @@ export default function Facturas() {
                       <Button variant="ghost" size="icon" onClick={() => handlePDF(f, "print")} title="Imprimir">
                         <Printer className="h-4 w-4" />
                       </Button>
+                      {f.clientes?.telefono && (
+                        <Button variant="ghost" size="icon" title="WhatsApp" onClick={() => {
+                          const phone = (f.clientes?.telefono || "").replace(/\D/g, "");
+                          const msg = encodeURIComponent(`Hola ${f.clientes?.nombre}, adjunto su factura ${f.numero} por RD$ ${Number(f.total).toLocaleString("es-DO", { minimumFractionDigits: 2 })}. ¡Gracias!`);
+                          window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
+                        }}>
+                          <MessageCircle className="h-4 w-4 text-accent" />
+                        </Button>
+                      )}
                       {f.estado === "activa" && (
                         <Button variant="ghost" size="icon" onClick={() => handleAnular(f.id)} title="Anular">
                           <Ban className="h-4 w-4 text-destructive" />

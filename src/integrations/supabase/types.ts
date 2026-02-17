@@ -112,6 +112,57 @@ export type Database = {
           },
         ]
       }
+      configuracion_negocio: {
+        Row: {
+          created_at: string
+          direccion: string | null
+          email: string | null
+          id: string
+          impresion_automatica: boolean
+          itbis_rate: number
+          logo_url: string | null
+          mensaje_factura: string | null
+          moneda: string
+          nombre_comercial: string
+          rnc: string | null
+          telefono: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          direccion?: string | null
+          email?: string | null
+          id?: string
+          impresion_automatica?: boolean
+          itbis_rate?: number
+          logo_url?: string | null
+          mensaje_factura?: string | null
+          moneda?: string
+          nombre_comercial?: string
+          rnc?: string | null
+          telefono?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          direccion?: string | null
+          email?: string | null
+          id?: string
+          impresion_automatica?: boolean
+          itbis_rate?: number
+          logo_url?: string | null
+          mensaje_factura?: string | null
+          moneda?: string
+          nombre_comercial?: string
+          rnc?: string | null
+          telefono?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       detalle_compras: {
         Row: {
           cantidad: number
@@ -209,9 +260,11 @@ export type Database = {
           id: string
           itbis: number
           metodo_pago: Database["public"]["Enums"]["metodo_pago"]
+          ncf: string | null
           notas: string | null
           numero: string
           subtotal: number
+          tipo_comprobante: string | null
           total: number
           user_id: string
         }
@@ -224,9 +277,11 @@ export type Database = {
           id?: string
           itbis?: number
           metodo_pago?: Database["public"]["Enums"]["metodo_pago"]
+          ncf?: string | null
           notas?: string | null
           numero: string
           subtotal?: number
+          tipo_comprobante?: string | null
           total?: number
           user_id: string
         }
@@ -239,9 +294,11 @@ export type Database = {
           id?: string
           itbis?: number
           metodo_pago?: Database["public"]["Enums"]["metodo_pago"]
+          ncf?: string | null
           notas?: string | null
           numero?: string
           subtotal?: number
+          tipo_comprobante?: string | null
           total?: number
           user_id?: string
         }
@@ -254,6 +311,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ncf_secuencias: {
+        Row: {
+          activo: boolean
+          created_at: string
+          id: string
+          prefijo: string
+          secuencia_actual: number
+          secuencia_limite: number
+          serie: string
+          tipo_comprobante: string
+          user_id: string
+        }
+        Insert: {
+          activo?: boolean
+          created_at?: string
+          id?: string
+          prefijo?: string
+          secuencia_actual?: number
+          secuencia_limite?: number
+          serie?: string
+          tipo_comprobante: string
+          user_id: string
+        }
+        Update: {
+          activo?: boolean
+          created_at?: string
+          id?: string
+          prefijo?: string
+          secuencia_actual?: number
+          secuencia_limite?: number
+          serie?: string
+          tipo_comprobante?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       productos: {
         Row: {
@@ -402,6 +495,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      next_ncf: { Args: { p_tipo: string; p_user_id: string }; Returns: string }
     }
     Enums: {
       app_role: "admin" | "cajero" | "contador"

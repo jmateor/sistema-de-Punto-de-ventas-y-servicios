@@ -22,21 +22,24 @@ import {
   LogOut,
   FileSpreadsheet,
   ShoppingCart,
+  MonitorSmartphone,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const mainItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Punto de Venta", url: "/pos", icon: MonitorSmartphone },
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Productos", url: "/productos", icon: Package },
   { title: "Facturas", url: "/facturas", icon: FileText },
-  { title: "Nueva Factura", url: "/facturas/nueva", icon: FileSpreadsheet },
 ];
 
 const secondaryItems = [
   { title: "Proveedores", url: "/proveedores", icon: Truck },
   { title: "Compras", url: "/compras", icon: ShoppingCart },
   { title: "Reportes", url: "/reportes", icon: BarChart3 },
+  { title: "Configuraciones", url: "/configuraciones", icon: Settings },
 ];
 
 export function AppSidebar() {

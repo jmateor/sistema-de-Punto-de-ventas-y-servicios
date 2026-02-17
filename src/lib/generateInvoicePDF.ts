@@ -12,6 +12,9 @@ interface InvoiceData {
   total: number;
   metodo_pago: string;
   notas?: string | null;
+  ncf?: string;
+  tipo_comprobante?: string;
+  negocio?: { nombre: string; rnc: string; direccion: string; telefono: string; email: string; mensaje: string };
 }
 
 const metodoPagoLabel: Record<string, string> = {
@@ -36,10 +39,18 @@ export function generateInvoicePDF(data: InvoiceData, action: "download" | "prin
   doc.text("FACTURA", 14, 22);
   doc.setFontSize(10);
   doc.text(data.numero, 14, 30);
+  if (data.ncf) {
+    doc.setFontSize(9);
+    doc.text(`NCF: ${data.ncf}`, 14, 36);
+  }
 
   doc.setFontSize(10);
   doc.text(`Fecha: ${new Date(data.fecha).toLocaleDateString("es-DO")}`, pageWidth - 14, 22, { align: "right" });
   doc.text(`Pago: ${metodoPagoLabel[data.metodo_pago] || data.metodo_pago}`, pageWidth - 14, 30, { align: "right" });
+  if (data.tipo_comprobante) {
+    doc.setFontSize(9);
+    doc.text(`Tipo: ${data.tipo_comprobante}`, pageWidth - 14, 36, { align: "right" });
+  }
 
   // Client info
   doc.setTextColor(30, 58, 95);

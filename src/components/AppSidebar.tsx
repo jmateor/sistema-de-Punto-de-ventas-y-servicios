@@ -21,6 +21,7 @@ import {
   BarChart3,
   LogOut,
   FileSpreadsheet,
+  ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -34,6 +35,7 @@ const mainItems = [
 
 const secondaryItems = [
   { title: "Proveedores", url: "/proveedores", icon: Truck },
+  { title: "Compras", url: "/compras", icon: ShoppingCart },
   { title: "Reportes", url: "/reportes", icon: BarChart3 },
 ];
 

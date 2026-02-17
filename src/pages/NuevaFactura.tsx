@@ -9,8 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, Trash2, FileText, Loader2 } from "lucide-react";
+import { Plus, Trash2, FileText, Loader2, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
+import QuickClientModal from "@/components/QuickClientModal";
 
 interface Cliente { id: string; nombre: string; rnc_cedula: string | null; }
 interface Producto { id: string; nombre: string; precio: number; stock: number; itbis_aplicable: boolean; }
@@ -36,6 +38,7 @@ export default function NuevaFactura() {
   const [notas, setNotas] = useState("");
   const [lineas, setLineas] = useState<LineaFactura[]>([]);
   const [saving, setSaving] = useState(false);
+  const [quickClientOpen, setQuickClientOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -86,7 +89,6 @@ export default function NuevaFactura() {
 
     setSaving(true);
     try {
-      // Get next invoice number
       const { data: seqData } = await supabase.rpc("nextval" as any, { seq_name: "factura_numero_seq" });
       const numero = `FAC-${String(seqData || Date.now()).padStart(6, "0")}`;
 
@@ -116,17 +118,33 @@ export default function NuevaFactura() {
       const { error: detError } = await supabase.from("detalle_facturas").insert(detalles);
       if (detError) throw detError;
 
-      // Update stock
       for (const l of lineas) {
         await supabase.rpc("decrement_stock" as any, { p_id: l.producto_id, amount: l.cantidad });
       }
 
-      toast.success(`Factura ${numero} creada exitosamente`);
+      // Generate PDF
+      const cliente = clientes.find(c => c.id === clienteId);
+      generateInvoicePDF({
+        numero,
+        fecha: new Date().toISOString(),
+        cliente: { nombre: cliente?.nombre || "", rnc_cedula: cliente?.rnc_cedula },
+        detalles: lineas.map(l => ({ nombre: l.nombre, cantidad: l.cantidad, precio_unitario: l.precio_unitario, itbis: l.itbis, subtotal: l.subtotal })),
+        subtotal, itbis: totalItbis, descuento: desc, total,
+        metodo_pago: metodoPago,
+        notas,
+      });
+
+      toast.success(`Factura ${numero} creada y PDF generado`);
       navigate("/facturas");
     } catch (err: any) {
       toast.error(err.message || "Error al crear factura");
     }
     setSaving(false);
+  };
+
+  const handleClientCreated = (c: { id: string; nombre: string; rnc_cedula: string | null }) => {
+    setClientes(prev => [...prev, c].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    setClienteId(c.id);
   };
 
   return (
@@ -142,14 +160,19 @@ export default function NuevaFactura() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Cliente *</Label>
-              <Select value={clienteId} onValueChange={setClienteId}>
-                <SelectTrigger><SelectValue placeholder="Selecciona un cliente" /></SelectTrigger>
-                <SelectContent>
-                  {clientes.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nombre} {c.rnc_cedula ? `(${c.rnc_cedula})` : ""}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select value={clienteId} onValueChange={setClienteId}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Selecciona un cliente" /></SelectTrigger>
+                  <SelectContent>
+                    {clientes.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.nombre} {c.rnc_cedula ? `(${c.rnc_cedula})` : ""}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => setQuickClientOpen(true)} title="Crear cliente rápido">
+                  <UserPlus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Método de Pago</Label>
@@ -185,7 +208,7 @@ export default function NuevaFactura() {
             </div>
             <Button onClick={handleSave} className="w-full mt-4" disabled={saving}>
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}
-              Generar Factura
+              Generar Factura + PDF
             </Button>
           </CardContent>
         </Card>
@@ -249,6 +272,8 @@ export default function NuevaFactura() {
           </Table>
         </CardContent>
       </Card>
+
+      <QuickClientModal open={quickClientOpen} onOpenChange={setQuickClientOpen} onCreated={handleClientCreated} />
     </div>
   );
 }

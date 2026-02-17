@@ -13,6 +13,7 @@ import Facturas from "./pages/Facturas";
 import NuevaFactura from "./pages/NuevaFactura";
 import Proveedores from "./pages/Proveedores";
 import Reportes from "./pages/Reportes";
+import Compras from "./pages/Compras";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/facturas" element={<ProtectedRoute><Facturas /></ProtectedRoute>} />
             <Route path="/facturas/nueva" element={<ProtectedRoute><NuevaFactura /></ProtectedRoute>} />
             <Route path="/proveedores" element={<ProtectedRoute><Proveedores /></ProtectedRoute>} />
+            <Route path="/compras" element={<ProtectedRoute><Compras /></ProtectedRoute>} />
             <Route path="/reportes" element={<ProtectedRoute><Reportes /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

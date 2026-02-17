@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Search, FileText, Ban } from "lucide-react";
+import { Search, FileText, Ban, Download, Printer } from "lucide-react";
 import { Link } from "react-router-dom";
+import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
+import { exportToExcel } from "@/lib/exportUtils";
 
 interface Factura {
   id: string;
@@ -20,7 +22,8 @@ interface Factura {
   total: number;
   metodo_pago: string;
   estado: string;
-  clientes: { nombre: string } | null;
+  notas: string | null;
+  clientes: { nombre: string; rnc_cedula: string | null; direccion: string | null; telefono: string | null; email: string | null } | null;
 }
 
 export default function Facturas() {
@@ -31,7 +34,7 @@ export default function Facturas() {
   const load = async () => {
     const { data } = await supabase
       .from("facturas")
-      .select("*, clientes(nombre)")
+      .select("*, clientes(nombre, rnc_cedula, direccion, telefono, email)")
       .order("created_at", { ascending: false });
     setFacturas((data as any) || []);
   };
@@ -46,16 +49,44 @@ export default function Facturas() {
     load();
   };
 
+  const handlePDF = async (f: Factura, action: "download" | "print") => {
+    const { data: detalles } = await supabase
+      .from("detalle_facturas")
+      .select("cantidad, precio_unitario, itbis, subtotal, productos(nombre)")
+      .eq("factura_id", f.id);
+
+    generateInvoicePDF({
+      numero: f.numero,
+      fecha: f.fecha,
+      cliente: { nombre: f.clientes?.nombre || "", rnc_cedula: f.clientes?.rnc_cedula, direccion: f.clientes?.direccion, telefono: f.clientes?.telefono, email: f.clientes?.email },
+      detalles: (detalles || []).map((d: any) => ({ nombre: d.productos?.nombre || "", cantidad: d.cantidad, precio_unitario: d.precio_unitario, itbis: d.itbis, subtotal: d.subtotal })),
+      subtotal: Number(f.subtotal), itbis: Number(f.itbis), descuento: Number(f.descuento), total: Number(f.total),
+      metodo_pago: f.metodo_pago,
+      notas: f.notas,
+    }, action);
+  };
+
+  const handleExport = () => {
+    exportToExcel(facturas.map(f => ({
+      Número: f.numero,
+      Cliente: f.clientes?.nombre || "",
+      Fecha: new Date(f.fecha).toLocaleDateString("es-DO"),
+      Subtotal: Number(f.subtotal),
+      ITBIS: Number(f.itbis),
+      Descuento: Number(f.descuento),
+      Total: Number(f.total),
+      "Método Pago": f.metodo_pago,
+      Estado: f.estado,
+    })), "facturas");
+    toast.success("Exportado a Excel");
+  };
+
   const filtered = facturas.filter(f =>
     f.numero.includes(search) ||
     (f.clientes?.nombre || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const metodoPagoLabel: Record<string, string> = {
-    efectivo: "Efectivo",
-    tarjeta: "Tarjeta",
-    transferencia: "Transferencia",
-  };
+  const metodoPagoLabel: Record<string, string> = { efectivo: "Efectivo", tarjeta: "Tarjeta", transferencia: "Transferencia" };
 
   return (
     <div className="animate-fade-in space-y-6">
@@ -64,9 +95,12 @@ export default function Facturas() {
           <h1 className="text-2xl font-bold text-foreground">Facturas</h1>
           <p className="text-muted-foreground">{facturas.length} facturas registradas</p>
         </div>
-        <Link to="/facturas/nueva">
-          <Button><FileText className="mr-2 h-4 w-4" />Nueva Factura</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4" />Exportar Excel</Button>
+          <Link to="/facturas/nueva">
+            <Button><FileText className="mr-2 h-4 w-4" />Nueva Factura</Button>
+          </Link>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -85,7 +119,7 @@ export default function Facturas() {
                 <TableHead>Total</TableHead>
                 <TableHead>Pago</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead className="w-20">Acciones</TableHead>
+                <TableHead className="w-36">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -109,11 +143,19 @@ export default function Facturas() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {f.estado === "activa" && (
-                      <Button variant="ghost" size="icon" onClick={() => handleAnular(f.id)} title="Anular">
-                        <Ban className="h-4 w-4 text-destructive" />
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handlePDF(f, "download")} title="Descargar PDF">
+                        <Download className="h-4 w-4" />
                       </Button>
-                    )}
+                      <Button variant="ghost" size="icon" onClick={() => handlePDF(f, "print")} title="Imprimir">
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                      {f.estado === "activa" && (
+                        <Button variant="ghost" size="icon" onClick={() => handleAnular(f.id)} title="Anular">
+                          <Ban className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

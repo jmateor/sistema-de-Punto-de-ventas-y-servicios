@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Save, Building2, Settings2, Shield, Hash, Loader2 } from "lucide-react";
+import { Save, Building2, Settings2, Hash, Loader2, Printer, Package, ShieldAlert, MonitorSmartphone } from "lucide-react";
 
 interface Config {
   nombre_comercial: string;
@@ -47,10 +49,30 @@ const COMPROBANTE_LABELS: Record<string, string> = {
 
 export default function Configuraciones() {
   const { user } = useAuth();
+  const { isAdmin, loading: permLoading } = usePermissions();
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [ncfSeqs, setNcfSeqs] = useState<NcfSeq[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // POS config state
+  const [posConfig, setPosConfig] = useState({
+    confirmacion_cobro: true,
+    sonido_escaner: false,
+    modo_rapido: false,
+    pantalla_completa: false,
+    bloqueo_precios: true,
+    descuentos_activos: true,
+    bloquear_sin_stock: false,
+    stock_negativo: false,
+  });
+
+  // Print config state
+  const [printConfig, setPrintConfig] = useState({
+    formato: "80mm",
+    copias: 1,
+    logo_en_factura: true,
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -91,7 +113,12 @@ export default function Configuraciones() {
     } as any, { onConflict: "user_id" });
 
     if (error) toast.error(error.message);
-    else toast.success("Configuración guardada");
+    else {
+      toast.success("Configuración guardada");
+      await supabase.from("audit_logs").insert({
+        user_id: user!.id, accion: "actualizar_config", entidad: "configuracion_negocio", detalles: config,
+      } as any);
+    }
     setSaving(false);
   };
 
@@ -117,27 +144,40 @@ export default function Configuraciones() {
 
   const updateField = (field: keyof Config, value: any) => setConfig(prev => ({ ...prev, [field]: value }));
 
-  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if (permLoading || loading) return <div className="flex items-center justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+        <ShieldAlert className="h-12 w-12 mb-4 opacity-40" />
+        <h2 className="text-lg font-semibold text-foreground">Acceso Restringido</h2>
+        <p className="text-sm mt-1">Solo los administradores pueden modificar la configuración.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Configuraciones</h1>
-        <p className="text-muted-foreground">Administra los datos del negocio y parámetros del sistema</p>
+        <p className="text-muted-foreground">Administra los datos del negocio, POS, impresión y parámetros fiscales</p>
       </div>
 
       <Tabs defaultValue="negocio">
-        <TabsList className="grid grid-cols-3 w-full max-w-md">
-          <TabsTrigger value="negocio"><Building2 className="h-4 w-4 mr-1.5" />Negocio</TabsTrigger>
-          <TabsTrigger value="sistema"><Settings2 className="h-4 w-4 mr-1.5" />Sistema</TabsTrigger>
-          <TabsTrigger value="fiscal"><Hash className="h-4 w-4 mr-1.5" />Fiscal</TabsTrigger>
+        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+          <TabsTrigger value="negocio"><Building2 className="h-4 w-4 mr-1.5 hidden sm:inline" />Negocio</TabsTrigger>
+          <TabsTrigger value="pos"><MonitorSmartphone className="h-4 w-4 mr-1.5 hidden sm:inline" />POS</TabsTrigger>
+          <TabsTrigger value="impresion"><Printer className="h-4 w-4 mr-1.5 hidden sm:inline" />Impresión</TabsTrigger>
+          <TabsTrigger value="inventario"><Package className="h-4 w-4 mr-1.5 hidden sm:inline" />Inventario</TabsTrigger>
+          <TabsTrigger value="fiscal"><Hash className="h-4 w-4 mr-1.5 hidden sm:inline" />Fiscal</TabsTrigger>
         </TabsList>
 
+        {/* Negocio Tab */}
         <TabsContent value="negocio" className="mt-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Datos del Negocio</CardTitle>
-              <CardDescription>Información que aparecerá en las facturas</CardDescription>
+              <CardDescription>Información que aparecerá en las facturas y documentos</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
@@ -162,43 +202,121 @@ export default function Configuraciones() {
                   <Input type="email" value={config.email} onChange={e => updateField("email", e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Mensaje en Factura</Label>
-                  <Input value={config.mensaje_factura} onChange={e => updateField("mensaje_factura", e.target.value)} />
-                </div>
-              </div>
-              <Button onClick={handleSaveConfig} disabled={saving}>
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Guardar
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="sistema" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Parámetros del Sistema</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Tasa ITBIS (%)</Label>
-                  <Input
-                    type="number" step="0.01"
-                    value={(config.itbis_rate * 100).toFixed(0)}
-                    onChange={e => updateField("itbis_rate", parseFloat(e.target.value) / 100 || 0.18)}
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label>Moneda</Label>
                   <Input value={config.moneda} onChange={e => updateField("moneda", e.target.value)} />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label>Mensaje personalizado en factura</Label>
+                <Textarea
+                  value={config.mensaje_factura}
+                  onChange={e => updateField("mensaje_factura", e.target.value)}
+                  placeholder="Garantías, políticas de devolución, horarios, redes sociales..."
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">Este mensaje aparecerá al pie de cada factura impresa y PDF</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Tasa ITBIS (%)</Label>
+                <Input
+                  type="number" step="1" className="w-32"
+                  value={(config.itbis_rate * 100).toFixed(0)}
+                  onChange={e => updateField("itbis_rate", parseFloat(e.target.value) / 100 || 0.18)}
+                />
+              </div>
+              <Button onClick={handleSaveConfig} disabled={saving}>
+                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Guardar Configuración
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* POS Tab */}
+        <TabsContent value="pos" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Configuración del Punto de Venta</CardTitle>
+              <CardDescription>Opciones operativas para el módulo POS</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[
+                { key: "confirmacion_cobro", label: "Confirmación antes de cobrar", desc: "Muestra un diálogo de confirmación antes de procesar el pago" },
+                { key: "sonido_escaner", label: "Sonido al escanear", desc: "Emite un sonido al detectar un código de barras" },
+                { key: "modo_rapido", label: "Modo rápido", desc: "Omite pasos intermedios para agilizar la venta" },
+                { key: "pantalla_completa", label: "Pantalla completa automática", desc: "Abre el POS en pantalla completa al entrar" },
+                { key: "bloqueo_precios", label: "Bloquear edición de precios (solo admin)", desc: "Los cajeros no podrán modificar precios en el POS" },
+                { key: "descuentos_activos", label: "Permitir descuentos", desc: "Habilita el campo de descuento en el POS" },
+              ].map(item => (
+                <div key={item.key} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                  <Switch
+                    checked={(posConfig as any)[item.key]}
+                    onCheckedChange={v => setPosConfig(prev => ({ ...prev, [item.key]: v }))}
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{item.label}</p>
+                    <p className="text-xs text-muted-foreground">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground pt-2">
+                💡 Estas opciones se guardan localmente y se aplicarán al módulo POS.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Impresion Tab */}
+        <TabsContent value="impresion" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Configuración de Impresión</CardTitle>
+              <CardDescription>Formato y opciones de impresión de facturas</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                <Switch checked={config.impresion_automatica} onCheckedChange={v => updateField("impresion_automatica", v)} />
+                <Switch
+                  checked={config.impresion_automatica}
+                  onCheckedChange={v => updateField("impresion_automatica", v)}
+                />
                 <div>
                   <p className="text-sm font-medium">Impresión automática al facturar</p>
-                  <p className="text-xs text-muted-foreground">Abre la ventana de impresión automáticamente</p>
+                  <p className="text-xs text-muted-foreground">Abre la ventana de impresión automáticamente al crear factura</p>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Formato de papel</Label>
+                  <div className="flex gap-2">
+                    {["58mm", "80mm", "Carta"].map(fmt => (
+                      <Button
+                        key={fmt}
+                        variant={printConfig.formato === fmt ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setPrintConfig(prev => ({ ...prev, formato: fmt }))}
+                      >
+                        {fmt}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Copias automáticas</Label>
+                  <Input
+                    type="number" min={1} max={5} className="w-20"
+                    value={printConfig.copias}
+                    onChange={e => setPrintConfig(prev => ({ ...prev, copias: parseInt(e.target.value) || 1 }))}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                <Switch
+                  checked={printConfig.logo_en_factura}
+                  onCheckedChange={v => setPrintConfig(prev => ({ ...prev, logo_en_factura: v }))}
+                />
+                <div>
+                  <p className="text-sm font-medium">Incluir logo en factura</p>
+                  <p className="text-xs text-muted-foreground">Muestra el logo del negocio en la cabecera</p>
                 </div>
               </div>
               <Button onClick={handleSaveConfig} disabled={saving}>
@@ -209,6 +327,37 @@ export default function Configuraciones() {
           </Card>
         </TabsContent>
 
+        {/* Inventario Tab */}
+        <TabsContent value="inventario" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Configuración de Inventario</CardTitle>
+              <CardDescription>Control de stock y reglas de inventario</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[
+                { key: "bloquear_sin_stock", label: "Bloquear venta sin stock", desc: "No permite facturar productos con stock en 0" },
+                { key: "stock_negativo", label: "Permitir stock negativo", desc: "Permite que el stock baje a números negativos" },
+              ].map(item => (
+                <div key={item.key} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                  <Switch
+                    checked={(posConfig as any)[item.key]}
+                    onCheckedChange={v => setPosConfig(prev => ({ ...prev, [item.key]: v }))}
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{item.label}</p>
+                    <p className="text-xs text-muted-foreground">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground pt-2">
+                ℹ️ El stock mínimo se configura por producto en el módulo de Productos.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Fiscal Tab */}
         <TabsContent value="fiscal" className="mt-4">
           <Card>
             <CardHeader>

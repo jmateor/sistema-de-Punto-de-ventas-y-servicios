@@ -20,10 +20,10 @@ import {
   Truck,
   BarChart3,
   LogOut,
-  FileSpreadsheet,
   ShoppingCart,
   MonitorSmartphone,
   Settings,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -39,6 +39,7 @@ const secondaryItems = [
   { title: "Proveedores", url: "/proveedores", icon: Truck },
   { title: "Compras", url: "/compras", icon: ShoppingCart },
   { title: "Reportes", url: "/reportes", icon: BarChart3 },
+  { title: "Usuarios y Roles", url: "/usuarios", icon: Shield },
   { title: "Configuraciones", url: "/configuraciones", icon: Settings },
 ];
 

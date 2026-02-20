@@ -150,6 +150,7 @@ export type Database = {
           created_at: string
           direccion: string | null
           email: string | null
+          formato_impresion: string | null
           id: string
           impresion_automatica: boolean
           itbis_rate: number
@@ -157,15 +158,18 @@ export type Database = {
           mensaje_factura: string | null
           moneda: string
           nombre_comercial: string
+          razon_social: string | null
           rnc: string | null
           telefono: string | null
           updated_at: string
           user_id: string
+          whatsapp: string | null
         }
         Insert: {
           created_at?: string
           direccion?: string | null
           email?: string | null
+          formato_impresion?: string | null
           id?: string
           impresion_automatica?: boolean
           itbis_rate?: number
@@ -173,15 +177,18 @@ export type Database = {
           mensaje_factura?: string | null
           moneda?: string
           nombre_comercial?: string
+          razon_social?: string | null
           rnc?: string | null
           telefono?: string | null
           updated_at?: string
           user_id: string
+          whatsapp?: string | null
         }
         Update: {
           created_at?: string
           direccion?: string | null
           email?: string | null
+          formato_impresion?: string | null
           id?: string
           impresion_automatica?: boolean
           itbis_rate?: number
@@ -189,10 +196,12 @@ export type Database = {
           mensaje_factura?: string | null
           moneda?: string
           nombre_comercial?: string
+          razon_social?: string | null
           rnc?: string | null
           telefono?: string | null
           updated_at?: string
           user_id?: string
+          whatsapp?: string | null
         }
         Relationships: []
       }
@@ -387,6 +396,7 @@ export type Database = {
           costo: number
           created_at: string
           descripcion: string | null
+          garantia_descripcion: string | null
           id: string
           itbis_aplicable: boolean
           nombre: string
@@ -401,6 +411,7 @@ export type Database = {
           costo?: number
           created_at?: string
           descripcion?: string | null
+          garantia_descripcion?: string | null
           id?: string
           itbis_aplicable?: boolean
           nombre: string
@@ -415,6 +426,7 @@ export type Database = {
           costo?: number
           created_at?: string
           descripcion?: string | null
+          garantia_descripcion?: string | null
           id?: string
           itbis_aplicable?: boolean
           nombre?: string

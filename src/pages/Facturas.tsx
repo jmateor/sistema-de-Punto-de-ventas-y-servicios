@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { Search, FileText, Ban, Download, Printer, MessageCircle } from "lucide-react";
 import { Link } from "react-router-dom";
-import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
+import { generateInvoicePDF, type NegocioData } from "@/lib/generateInvoicePDF";
 import { exportToExcel } from "@/lib/exportUtils";
 
 interface Factura {
@@ -30,13 +30,37 @@ export default function Facturas() {
   const { user } = useAuth();
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [search, setSearch] = useState("");
+  const [negocio, setNegocio] = useState<NegocioData | null>(null);
+  const [formatoImpresion, setFormatoImpresion] = useState<"carta" | "80mm" | "58mm">("carta");
 
   const load = async () => {
-    const { data } = await supabase
-      .from("facturas")
-      .select("*, clientes(nombre, rnc_cedula, direccion, telefono, email)")
-      .order("created_at", { ascending: false });
-    setFacturas((data as any) || []);
+    const [facRes, negRes] = await Promise.all([
+      supabase
+        .from("facturas")
+        .select("*, clientes(nombre, rnc_cedula, direccion, telefono, email)")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("configuracion_negocio")
+        .select("nombre_comercial, razon_social, rnc, direccion, telefono, whatsapp, email, logo_url, mensaje_factura, formato_impresion")
+        .eq("user_id", user!.id)
+        .maybeSingle(),
+    ]);
+    setFacturas((facRes.data as any) || []);
+    if (negRes.data) {
+      const d = negRes.data as any;
+      setNegocio({
+        nombre_comercial: d.nombre_comercial,
+        razon_social: d.razon_social,
+        rnc: d.rnc,
+        direccion: d.direccion,
+        telefono: d.telefono,
+        whatsapp: d.whatsapp,
+        email: d.email,
+        logo_url: d.logo_url,
+        mensaje_factura: d.mensaje_factura,
+      });
+      if (d.formato_impresion) setFormatoImpresion(d.formato_impresion as any);
+    }
   };
 
   useEffect(() => { if (user) load(); }, [user]);
@@ -52,17 +76,35 @@ export default function Facturas() {
   const handlePDF = async (f: Factura, action: "download" | "print") => {
     const { data: detalles } = await supabase
       .from("detalle_facturas")
-      .select("cantidad, precio_unitario, itbis, subtotal, productos(nombre)")
+      .select("cantidad, precio_unitario, itbis, subtotal, productos(nombre, garantia_descripcion)")
       .eq("factura_id", f.id);
 
     generateInvoicePDF({
       numero: f.numero,
       fecha: f.fecha,
-      cliente: { nombre: f.clientes?.nombre || "", rnc_cedula: f.clientes?.rnc_cedula, direccion: f.clientes?.direccion, telefono: f.clientes?.telefono, email: f.clientes?.email },
-      detalles: (detalles || []).map((d: any) => ({ nombre: d.productos?.nombre || "", cantidad: d.cantidad, precio_unitario: d.precio_unitario, itbis: d.itbis, subtotal: d.subtotal })),
-      subtotal: Number(f.subtotal), itbis: Number(f.itbis), descuento: Number(f.descuento), total: Number(f.total),
+      cliente: {
+        nombre: f.clientes?.nombre || "",
+        rnc_cedula: f.clientes?.rnc_cedula,
+        direccion: f.clientes?.direccion,
+        telefono: f.clientes?.telefono,
+        email: f.clientes?.email,
+      },
+      detalles: (detalles || []).map((d: any) => ({
+        nombre: d.productos?.nombre || "",
+        cantidad: d.cantidad,
+        precio_unitario: d.precio_unitario,
+        itbis: d.itbis,
+        subtotal: d.subtotal,
+        garantia: d.productos?.garantia_descripcion || null,
+      })),
+      subtotal: Number(f.subtotal),
+      itbis: Number(f.itbis),
+      descuento: Number(f.descuento),
+      total: Number(f.total),
       metodo_pago: f.metodo_pago,
       notas: f.notas,
+      negocio: negocio || undefined,
+      formato: formatoImpresion,
     }, action);
   };
 
@@ -103,9 +145,26 @@ export default function Facturas() {
         </div>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Buscar por número o cliente..." value={search} onChange={e => setSearch(e.target.value)} />
+      <div className="flex items-center gap-4">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Buscar por número o cliente..." value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        {/* Format selector */}
+        <div className="flex items-center gap-1.5 border border-border rounded-md p-1">
+          <span className="text-xs text-muted-foreground px-1">Formato:</span>
+          {(["carta", "80mm", "58mm"] as const).map(fmt => (
+            <Button
+              key={fmt}
+              size="sm"
+              variant={formatoImpresion === fmt ? "default" : "ghost"}
+              className="h-7 text-xs"
+              onClick={() => setFormatoImpresion(fmt)}
+            >
+              {fmt === "carta" ? "Carta" : fmt}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <Card>

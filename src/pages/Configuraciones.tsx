@@ -16,14 +16,18 @@ import { Save, Building2, Settings2, Hash, Loader2, Printer, Package, ShieldAler
 
 interface Config {
   nombre_comercial: string;
+  razon_social: string;
   rnc: string;
   direccion: string;
   telefono: string;
+  whatsapp: string;
   email: string;
   mensaje_factura: string;
   itbis_rate: number;
   moneda: string;
   impresion_automatica: boolean;
+  formato_impresion: string;
+  logo_url: string;
 }
 
 interface NcfSeq {
@@ -35,9 +39,9 @@ interface NcfSeq {
 }
 
 const DEFAULT_CONFIG: Config = {
-  nombre_comercial: "", rnc: "", direccion: "", telefono: "", email: "",
-  mensaje_factura: "Gracias por su compra", itbis_rate: 0.18, moneda: "RD$",
-  impresion_automatica: false,
+  nombre_comercial: "", razon_social: "", rnc: "", direccion: "", telefono: "", whatsapp: "",
+  email: "", mensaje_factura: "Gracias por su compra", itbis_rate: 0.18, moneda: "RD$",
+  impresion_automatica: false, formato_impresion: "carta", logo_url: "",
 };
 
 const COMPROBANTE_LABELS: Record<string, string> = {
@@ -68,11 +72,7 @@ export default function Configuraciones() {
   });
 
   // Print config state
-  const [printConfig, setPrintConfig] = useState({
-    formato: "80mm",
-    copias: 1,
-    logo_en_factura: true,
-  });
+  // printConfig removed – now stored in main config.formato_impresion
 
   useEffect(() => {
     if (!user) return;
@@ -90,14 +90,18 @@ export default function Configuraciones() {
       const d = configRes.data as any;
       setConfig({
         nombre_comercial: d.nombre_comercial || "",
+        razon_social: d.razon_social || "",
         rnc: d.rnc || "",
         direccion: d.direccion || "",
         telefono: d.telefono || "",
+        whatsapp: d.whatsapp || "",
         email: d.email || "",
         mensaje_factura: d.mensaje_factura || "",
         itbis_rate: Number(d.itbis_rate) || 0.18,
         moneda: d.moneda || "RD$",
         impresion_automatica: d.impresion_automatica || false,
+        formato_impresion: d.formato_impresion || "carta",
+        logo_url: d.logo_url || "",
       });
     }
 
@@ -177,13 +181,29 @@ export default function Configuraciones() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Datos del Negocio</CardTitle>
-              <CardDescription>Información que aparecerá en las facturas y documentos</CardDescription>
+              <CardDescription>Información que aparecerá en las facturas y documentos PDF</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Logo preview */}
+              {config.logo_url && (
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30">
+                  <img src={config.logo_url} alt="Logo" className="h-14 w-auto object-contain rounded" />
+                  <p className="text-xs text-muted-foreground">Logo actual del negocio</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>URL del Logo</Label>
+                <Input value={config.logo_url} onChange={e => updateField("logo_url", e.target.value)} placeholder="https://mi-sitio.com/logo.png" />
+                <p className="text-xs text-muted-foreground">URL pública de imagen PNG/JPG. Aparecerá en la cabecera del PDF.</p>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Nombre Comercial</Label>
+                  <Label>Nombre Comercial *</Label>
                   <Input value={config.nombre_comercial} onChange={e => updateField("nombre_comercial", e.target.value)} placeholder="Mi Empresa SRL" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Razón Social</Label>
+                  <Input value={config.razon_social} onChange={e => updateField("razon_social", e.target.value)} placeholder="Mi Empresa, S.R.L." />
                 </div>
                 <div className="space-y-2">
                   <Label>RNC</Label>
@@ -198,6 +218,10 @@ export default function Configuraciones() {
                   <Input value={config.telefono} onChange={e => updateField("telefono", e.target.value)} />
                 </div>
                 <div className="space-y-2">
+                  <Label>WhatsApp</Label>
+                  <Input value={config.whatsapp} onChange={e => updateField("whatsapp", e.target.value)} placeholder="+1 809 000 0000" />
+                </div>
+                <div className="space-y-2">
                   <Label>Email</Label>
                   <Input type="email" value={config.email} onChange={e => updateField("email", e.target.value)} />
                 </div>
@@ -207,14 +231,14 @@ export default function Configuraciones() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Mensaje personalizado en factura</Label>
+                <Label>Mensaje al pie de factura</Label>
                 <Textarea
                   value={config.mensaje_factura}
                   onChange={e => updateField("mensaje_factura", e.target.value)}
-                  placeholder="Garantías, políticas de devolución, horarios, redes sociales..."
-                  rows={3}
+                  placeholder="Ej: Garantías, políticas de devolución, horarios de atención, redes sociales..."
+                  rows={4}
                 />
-                <p className="text-xs text-muted-foreground">Este mensaje aparecerá al pie de cada factura impresa y PDF</p>
+                <p className="text-xs text-muted-foreground">Aparecerá al pie de cada factura PDF (térmica y carta)</p>
               </div>
               <div className="space-y-2">
                 <Label>Tasa ITBIS (%)</Label>
@@ -226,7 +250,7 @@ export default function Configuraciones() {
               </div>
               <Button onClick={handleSaveConfig} disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Guardar Configuración
+                Guardar Configuración del Negocio
               </Button>
             </CardContent>
           </Card>
@@ -271,7 +295,7 @@ export default function Configuraciones() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Configuración de Impresión</CardTitle>
-              <CardDescription>Formato y opciones de impresión de facturas</CardDescription>
+              <CardDescription>Formato de papel predeterminado para facturas PDF</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-3 p-3 rounded-lg border border-border">
@@ -284,44 +308,36 @@ export default function Configuraciones() {
                   <p className="text-xs text-muted-foreground">Abre la ventana de impresión automáticamente al crear factura</p>
                 </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Formato de papel</Label>
-                  <div className="flex gap-2">
-                    {["58mm", "80mm", "Carta"].map(fmt => (
-                      <Button
-                        key={fmt}
-                        variant={printConfig.formato === fmt ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setPrintConfig(prev => ({ ...prev, formato: fmt }))}
-                      >
-                        {fmt}
-                      </Button>
-                    ))}
-                  </div>
+              <div className="space-y-3">
+                <Label>Formato de papel predeterminado</Label>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {([
+                    { key: "carta", label: "📄 Carta / A4", desc: "Impresora de oficina, full design con logo y colores" },
+                    { key: "80mm", label: "🧾 Térmica 80mm", desc: "Impresora de punto de venta estándar" },
+                    { key: "58mm", label: "🧾 Térmica 58mm", desc: "Impresora compacta o portátil" },
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => updateField("formato_impresion", opt.key)}
+                      className={`flex flex-col items-start p-3 rounded-lg border-2 text-left transition-all ${
+                        config.formato_impresion === opt.key
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-muted-foreground"
+                      }`}
+                    >
+                      <span className="font-semibold text-sm text-foreground">{opt.label}</span>
+                      <span className="text-xs text-muted-foreground mt-1">{opt.desc}</span>
+                    </button>
+                  ))}
                 </div>
-                <div className="space-y-2">
-                  <Label>Copias automáticas</Label>
-                  <Input
-                    type="number" min={1} max={5} className="w-20"
-                    value={printConfig.copias}
-                    onChange={e => setPrintConfig(prev => ({ ...prev, copias: parseInt(e.target.value) || 1 }))}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                <Switch
-                  checked={printConfig.logo_en_factura}
-                  onCheckedChange={v => setPrintConfig(prev => ({ ...prev, logo_en_factura: v }))}
-                />
-                <div>
-                  <p className="text-sm font-medium">Incluir logo en factura</p>
-                  <p className="text-xs text-muted-foreground">Muestra el logo del negocio en la cabecera</p>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Puedes cambiar el formato al momento de generar cualquier factura también.
+                </p>
               </div>
               <Button onClick={handleSaveConfig} disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Guardar
+                Guardar Configuración de Impresión
               </Button>
             </CardContent>
           </Card>

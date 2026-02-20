@@ -11,11 +11,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Trash2, FileText, Loader2, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
+import { generateInvoicePDF, type NegocioData } from "@/lib/generateInvoicePDF";
 import QuickClientModal from "@/components/QuickClientModal";
 
 interface Cliente { id: string; nombre: string; rnc_cedula: string | null; }
-interface Producto { id: string; nombre: string; precio: number; stock: number; itbis_aplicable: boolean; }
+interface Producto {
+  id: string;
+  nombre: string;
+  precio: number;
+  stock: number;
+  itbis_aplicable: boolean;
+  garantia_descripcion: string | null;
+}
 interface LineaFactura {
   producto_id: string;
   nombre: string;
@@ -23,6 +30,7 @@ interface LineaFactura {
   precio_unitario: number;
   itbis: number;
   subtotal: number;
+  garantia: string | null;
 }
 
 const ITBIS_RATE = 0.18;
@@ -39,15 +47,36 @@ export default function NuevaFactura() {
   const [lineas, setLineas] = useState<LineaFactura[]>([]);
   const [saving, setSaving] = useState(false);
   const [quickClientOpen, setQuickClientOpen] = useState(false);
+  const [negocio, setNegocio] = useState<NegocioData | null>(null);
+  const [formatoImpresion, setFormatoImpresion] = useState<"carta" | "80mm" | "58mm">("carta");
 
   useEffect(() => {
     if (!user) return;
     Promise.all([
       supabase.from("clientes").select("id, nombre, rnc_cedula").order("nombre"),
-      supabase.from("productos").select("id, nombre, precio, stock, itbis_aplicable").order("nombre"),
-    ]).then(([c, p]) => {
+      supabase.from("productos").select("id, nombre, precio, stock, itbis_aplicable, garantia_descripcion").order("nombre"),
+      supabase.from("configuracion_negocio")
+        .select("nombre_comercial, razon_social, rnc, direccion, telefono, whatsapp, email, logo_url, mensaje_factura, formato_impresion")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]).then(([c, p, neg]) => {
       setClientes(c.data || []);
-      setProductos(p.data || []);
+      setProductos((p.data as any) || []);
+      if (neg.data) {
+        const d = neg.data as any;
+        setNegocio({
+          nombre_comercial: d.nombre_comercial,
+          razon_social: d.razon_social,
+          rnc: d.rnc,
+          direccion: d.direccion,
+          telefono: d.telefono,
+          whatsapp: d.whatsapp,
+          email: d.email,
+          logo_url: d.logo_url,
+          mensaje_factura: d.mensaje_factura,
+        });
+        if (d.formato_impresion) setFormatoImpresion(d.formato_impresion as any);
+      }
     });
   }, [user]);
 
@@ -63,6 +92,7 @@ export default function NuevaFactura() {
       precio_unitario: Number(prod.precio),
       itbis,
       subtotal: Number(prod.precio) + itbis,
+      garantia: prod.garantia_descripcion || null,
     }]);
   };
 
@@ -122,16 +152,28 @@ export default function NuevaFactura() {
         await supabase.rpc("decrement_stock" as any, { p_id: l.producto_id, amount: l.cantidad });
       }
 
-      // Generate PDF
+      // Generate PDF with business data
       const cliente = clientes.find(c => c.id === clienteId);
       generateInvoicePDF({
         numero,
         fecha: new Date().toISOString(),
         cliente: { nombre: cliente?.nombre || "", rnc_cedula: cliente?.rnc_cedula },
-        detalles: lineas.map(l => ({ nombre: l.nombre, cantidad: l.cantidad, precio_unitario: l.precio_unitario, itbis: l.itbis, subtotal: l.subtotal })),
-        subtotal, itbis: totalItbis, descuento: desc, total,
+        detalles: lineas.map(l => ({
+          nombre: l.nombre,
+          cantidad: l.cantidad,
+          precio_unitario: l.precio_unitario,
+          itbis: l.itbis,
+          subtotal: l.subtotal,
+          garantia: l.garantia,
+        })),
+        subtotal,
+        itbis: totalItbis,
+        descuento: desc,
+        total,
         metodo_pago: metodoPago,
         notas,
+        negocio: negocio || undefined,
+        formato: formatoImpresion,
       });
 
       toast.success(`Factura ${numero} creada y PDF generado`);
@@ -186,6 +228,27 @@ export default function NuevaFactura() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Formato de Impresión</Label>
+              <div className="flex gap-2">
+                {(["carta", "80mm", "58mm"] as const).map(fmt => (
+                  <Button
+                    key={fmt}
+                    type="button"
+                    variant={formatoImpresion === fmt ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFormatoImpresion(fmt)}
+                  >
+                    {fmt === "carta" ? "📄 Carta" : `🧾 ${fmt}`}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {formatoImpresion === "carta" ? "Tamaño A4 – ideal para impresoras de oficina" :
+                 formatoImpresion === "80mm" ? "Térmica 80mm – impresora de punto de venta" :
+                 "Térmica 58mm – impresora compacta"}
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>Descuento (RD$)</Label>
               <Input type="number" step="0.01" value={descuento} onChange={e => setDescuento(e.target.value)} />
             </div>
@@ -199,6 +262,13 @@ export default function NuevaFactura() {
         <Card>
           <CardHeader><CardTitle className="text-base">Resumen</CardTitle></CardHeader>
           <CardContent className="space-y-3">
+            {negocio?.nombre_comercial && (
+              <div className="rounded-lg bg-muted/40 p-2.5 mb-2 border border-border">
+                <p className="text-xs font-semibold text-foreground">{negocio.nombre_comercial}</p>
+                {negocio.rnc && <p className="text-xs text-muted-foreground">RNC: {negocio.rnc}</p>}
+                {negocio.direccion && <p className="text-xs text-muted-foreground">{negocio.direccion}</p>}
+              </div>
+            )}
             <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>RD$ {subtotal.toLocaleString("es-DO", { minimumFractionDigits: 2 })}</span></div>
             <div className="flex justify-between text-sm"><span className="text-muted-foreground">ITBIS (18%)</span><span>RD$ {totalItbis.toLocaleString("es-DO", { minimumFractionDigits: 2 })}</span></div>
             <div className="flex justify-between text-sm"><span className="text-muted-foreground">Descuento</span><span>-RD$ {desc.toLocaleString("es-DO", { minimumFractionDigits: 2 })}</span></div>
@@ -254,7 +324,14 @@ export default function NuevaFactura() {
                 </TableRow>
               ) : lineas.map((l, i) => (
                 <TableRow key={l.producto_id}>
-                  <TableCell className="font-medium">{l.nombre}</TableCell>
+                  <TableCell className="font-medium">
+                    <div>{l.nombre}</div>
+                    {l.garantia && (
+                      <div className="text-xs text-primary mt-0.5 flex items-center gap-1">
+                        🛡️ Garantía: {l.garantia}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Input type="number" min={1} value={l.cantidad} onChange={e => updateCantidad(i, parseInt(e.target.value) || 1)} className="w-20" />
                   </TableCell>

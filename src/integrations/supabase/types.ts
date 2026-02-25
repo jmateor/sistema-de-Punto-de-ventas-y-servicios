@@ -393,6 +393,7 @@ export type Database = {
       productos: {
         Row: {
           categoria_id: string | null
+          condiciones_garantia: string | null
           costo: number
           created_at: string
           descripcion: string | null
@@ -403,11 +404,13 @@ export type Database = {
           precio: number
           stock: number
           stock_minimo: number
+          tipo: string
           updated_at: string
           user_id: string
         }
         Insert: {
           categoria_id?: string | null
+          condiciones_garantia?: string | null
           costo?: number
           created_at?: string
           descripcion?: string | null
@@ -418,11 +421,13 @@ export type Database = {
           precio?: number
           stock?: number
           stock_minimo?: number
+          tipo?: string
           updated_at?: string
           user_id: string
         }
         Update: {
           categoria_id?: string | null
+          condiciones_garantia?: string | null
           costo?: number
           created_at?: string
           descripcion?: string | null
@@ -433,6 +438,7 @@ export type Database = {
           precio?: number
           stock?: number
           stock_minimo?: number
+          tipo?: string
           updated_at?: string
           user_id?: string
         }

@@ -22,6 +22,8 @@ interface Producto {
   stock: number;
   itbis_aplicable: boolean;
   garantia_descripcion: string | null;
+  condiciones_garantia: string | null;
+  tipo: string;
 }
 interface LineaFactura {
   producto_id: string;
@@ -31,6 +33,8 @@ interface LineaFactura {
   itbis: number;
   subtotal: number;
   garantia: string | null;
+  condiciones_garantia: string | null;
+  tipo: string;
 }
 
 const ITBIS_RATE = 0.18;
@@ -54,7 +58,7 @@ export default function NuevaFactura() {
     if (!user) return;
     Promise.all([
       supabase.from("clientes").select("id, nombre, rnc_cedula").order("nombre"),
-      supabase.from("productos").select("id, nombre, precio, stock, itbis_aplicable, garantia_descripcion").order("nombre"),
+      supabase.from("productos").select("id, nombre, precio, stock, itbis_aplicable, garantia_descripcion, condiciones_garantia, tipo").order("nombre"),
       supabase.from("configuracion_negocio")
         .select("nombre_comercial, razon_social, rnc, direccion, telefono, whatsapp, email, logo_url, mensaje_factura, formato_impresion")
         .eq("user_id", user.id)
@@ -93,6 +97,8 @@ export default function NuevaFactura() {
       itbis,
       subtotal: Number(prod.precio) + itbis,
       garantia: prod.garantia_descripcion || null,
+      condiciones_garantia: prod.condiciones_garantia || null,
+      tipo: prod.tipo || "producto",
     }]);
   };
 
@@ -148,8 +154,11 @@ export default function NuevaFactura() {
       const { error: detError } = await supabase.from("detalle_facturas").insert(detalles);
       if (detError) throw detError;
 
+      // Only decrement stock for products, NOT services
       for (const l of lineas) {
-        await supabase.rpc("decrement_stock" as any, { p_id: l.producto_id, amount: l.cantidad });
+        if (l.tipo !== "servicio") {
+          await supabase.rpc("decrement_stock" as any, { p_id: l.producto_id, amount: l.cantidad });
+        }
       }
 
       // Generate PDF with business data
@@ -165,6 +174,7 @@ export default function NuevaFactura() {
           itbis: l.itbis,
           subtotal: l.subtotal,
           garantia: l.garantia,
+          condiciones_garantia: l.condiciones_garantia,
         })),
         subtotal,
         itbis: totalItbis,

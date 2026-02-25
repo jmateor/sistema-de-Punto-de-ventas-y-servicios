@@ -11,14 +11,19 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import {
   Search, Trash2, FileText, Loader2, UserPlus, Plus, Minus,
-  ShoppingCart, CreditCard, Banknote, ArrowRightLeft, MessageCircle
+  ShoppingCart, CreditCard, Banknote, ArrowRightLeft, MessageCircle,
+  Wrench, ShieldCheck
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { generateInvoicePDF } from "@/lib/generateInvoicePDF";
+import { generateInvoicePDF, type NegocioData } from "@/lib/generateInvoicePDF";
 import QuickClientModal from "@/components/QuickClientModal";
 
 interface Cliente { id: string; nombre: string; rnc_cedula: string | null; telefono: string | null; email: string | null; direccion: string | null; }
-interface Producto { id: string; nombre: string; precio: number; stock: number; itbis_aplicable: boolean; }
+interface Producto {
+  id: string; nombre: string; precio: number; stock: number;
+  itbis_aplicable: boolean; tipo: string;
+  garantia_descripcion: string | null; condiciones_garantia: string | null;
+}
 interface LineaFactura {
   producto_id: string;
   nombre: string;
@@ -26,6 +31,9 @@ interface LineaFactura {
   precio_unitario: number;
   itbis: number;
   subtotal: number;
+  tipo: string;
+  garantia: string | null;
+  condiciones_garantia: string | null;
 }
 
 const ITBIS_RATE = 0.18;
@@ -53,15 +61,36 @@ export default function POS() {
   const [productSearch, setProductSearch] = useState("");
   const [clientSearch, setClientSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const [negocio, setNegocio] = useState<NegocioData | null>(null);
+  const [formatoImpresion, setFormatoImpresion] = useState<"carta" | "80mm" | "58mm">("80mm");
 
   useEffect(() => {
     if (!user) return;
     Promise.all([
       supabase.from("clientes").select("id, nombre, rnc_cedula, telefono, email, direccion").order("nombre"),
-      supabase.from("productos").select("id, nombre, precio, stock, itbis_aplicable").order("nombre"),
-    ]).then(([c, p]) => {
+      supabase.from("productos").select("id, nombre, precio, stock, itbis_aplicable, tipo, garantia_descripcion, condiciones_garantia").order("nombre"),
+      supabase.from("configuracion_negocio")
+        .select("nombre_comercial, razon_social, rnc, direccion, telefono, whatsapp, email, logo_url, mensaje_factura, formato_impresion")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]).then(([c, p, neg]) => {
       setClientes(c.data || []);
-      setProductos(p.data || []);
+      setProductos((p.data as any) || []);
+      if (neg.data) {
+        const d = neg.data as any;
+        setNegocio({
+          nombre_comercial: d.nombre_comercial,
+          razon_social: d.razon_social,
+          rnc: d.rnc,
+          direccion: d.direccion,
+          telefono: d.telefono,
+          whatsapp: d.whatsapp,
+          email: d.email,
+          logo_url: d.logo_url,
+          mensaje_factura: d.mensaje_factura,
+        });
+        if (d.formato_impresion) setFormatoImpresion(d.formato_impresion as any);
+      }
     });
   }, [user]);
 
@@ -78,6 +107,13 @@ export default function POS() {
   const addLinea = useCallback((productoId: string) => {
     const prod = productos.find(p => p.id === productoId);
     if (!prod) return;
+
+    // Block if product (not service) and no stock
+    if (prod.tipo !== "servicio" && prod.stock <= 0) {
+      toast.error(`Sin stock disponible para "${prod.nombre}"`);
+      return;
+    }
+
     setLineas(prev => {
       const existing = prev.find(l => l.producto_id === productoId);
       if (existing) {
@@ -92,6 +128,9 @@ export default function POS() {
       return [...prev, {
         producto_id: productoId, nombre: prod.nombre, cantidad: 1,
         precio_unitario: Number(prod.precio), itbis, subtotal: Number(prod.precio) + itbis,
+        tipo: prod.tipo || "producto",
+        garantia: prod.garantia_descripcion || null,
+        condiciones_garantia: prod.condiciones_garantia || null,
       }];
     });
     setProductSearch("");
@@ -157,18 +196,27 @@ export default function POS() {
       const { error: detError } = await supabase.from("detalle_facturas").insert(detalles);
       if (detError) throw detError;
 
+      // Only decrement stock for products, NOT services
       for (const l of lineas) {
-        await supabase.rpc("decrement_stock" as any, { p_id: l.producto_id, amount: l.cantidad });
+        if (l.tipo !== "servicio") {
+          await supabase.rpc("decrement_stock" as any, { p_id: l.producto_id, amount: l.cantidad });
+        }
       }
 
       const cliente = clientes.find(c => c.id === clienteId);
       generateInvoicePDF({
         numero, fecha: new Date().toISOString(),
         cliente: { nombre: cliente?.nombre || "", rnc_cedula: cliente?.rnc_cedula, direccion: cliente?.direccion, telefono: cliente?.telefono, email: cliente?.email },
-        detalles: lineas.map(l => ({ nombre: l.nombre, cantidad: l.cantidad, precio_unitario: l.precio_unitario, itbis: l.itbis, subtotal: l.subtotal })),
+        detalles: lineas.map(l => ({
+          nombre: l.nombre, cantidad: l.cantidad, precio_unitario: l.precio_unitario,
+          itbis: l.itbis, subtotal: l.subtotal,
+          garantia: l.garantia, condiciones_garantia: l.condiciones_garantia,
+        })),
         subtotal, itbis: totalItbis, descuento: desc, total,
         metodo_pago: metodoPago, notas,
         ncf: ncf || "", tipo_comprobante: tipoComprobante,
+        negocio: negocio || undefined,
+        formato: formatoImpresion,
       });
 
       toast.success(`Factura ${numero} creada · NCF: ${ncf || "N/A"}`);
@@ -200,6 +248,8 @@ export default function POS() {
   };
 
   const selectedClient = clientes.find(c => c.id === clienteId);
+  const productCount = lineas.filter(l => l.tipo !== "servicio").length;
+  const serviceCount = lineas.filter(l => l.tipo === "servicio").length;
 
   return (
     <div className="animate-fade-in flex flex-col h-[calc(100vh-3.5rem)] -m-6">
@@ -258,8 +308,17 @@ export default function POS() {
                       RD$ {Number(p.precio).toLocaleString("es-DO", { minimumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <div className="flex justify-between mt-1">
-                    <span className="text-xs text-muted-foreground">Stock: {p.stock}</span>
+                  <div className="flex justify-between mt-1 items-center">
+                    <div className="flex items-center gap-1.5">
+                      {p.tipo === "servicio" ? (
+                        <Badge variant="outline" className="text-[10px] h-4 gap-0.5"><Wrench className="h-2.5 w-2.5" />Servicio</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Stock: {p.stock}</span>
+                      )}
+                      {p.garantia_descripcion && (
+                        <ShieldCheck className="h-3 w-3 text-primary" />
+                      )}
+                    </div>
                     {p.itbis_aplicable && <Badge variant="secondary" className="text-[10px] h-4">ITBIS</Badge>}
                   </div>
                 </button>
@@ -284,11 +343,21 @@ export default function POS() {
               ) : lineas.map((l, i) => (
                 <div key={l.producto_id} className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border hover:shadow-sm transition-shadow">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{l.nombre}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-foreground truncate">{l.nombre}</p>
+                      {l.tipo === "servicio" && (
+                        <Badge variant="outline" className="text-[10px] h-4 shrink-0 gap-0.5"><Wrench className="h-2.5 w-2.5" />Servicio</Badge>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       RD$ {l.precio_unitario.toLocaleString("es-DO", { minimumFractionDigits: 2 })} c/u
                       {l.itbis > 0 && ` · ITBIS: RD$ ${l.itbis.toLocaleString("es-DO", { minimumFractionDigits: 2 })}`}
                     </p>
+                    {l.garantia && (
+                      <p className="text-[11px] text-primary mt-0.5 flex items-center gap-1">
+                        <ShieldCheck className="h-3 w-3" /> {l.garantia}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateCantidad(i, l.cantidad - 1)}>
@@ -410,7 +479,12 @@ export default function POS() {
               <span>RD$ {total.toLocaleString("es-DO", { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>{lineas.length} producto(s)</span>
+              <span>
+                {productCount > 0 && `${productCount} producto(s)`}
+                {productCount > 0 && serviceCount > 0 && " · "}
+                {serviceCount > 0 && `${serviceCount} servicio(s)`}
+                {productCount === 0 && serviceCount === 0 && "0 ítems"}
+              </span>
               <span>{lineas.reduce((s, l) => s + l.cantidad, 0)} unidad(es)</span>
             </div>
 

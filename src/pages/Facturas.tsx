@@ -76,7 +76,7 @@ export default function Facturas() {
   const handlePDF = async (f: Factura, action: "download" | "print") => {
     const { data: detalles } = await supabase
       .from("detalle_facturas")
-      .select("cantidad, precio_unitario, itbis, subtotal, productos(nombre, garantia_descripcion)")
+      .select("cantidad, precio_unitario, itbis, subtotal, productos(nombre, garantia_descripcion, condiciones_garantia)")
       .eq("factura_id", f.id);
 
     generateInvoicePDF({
@@ -96,6 +96,7 @@ export default function Facturas() {
         itbis: d.itbis,
         subtotal: d.subtotal,
         garantia: d.productos?.garantia_descripcion || null,
+        condiciones_garantia: d.productos?.condiciones_garantia || null,
       })),
       subtotal: Number(f.subtotal),
       itbis: Number(f.itbis),

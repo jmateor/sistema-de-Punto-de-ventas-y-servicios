@@ -14,7 +14,7 @@ import {
   ShoppingCart, CreditCard, Banknote, ArrowRightLeft, MessageCircle,
   Wrench, ShieldCheck
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { generateInvoicePDF, type NegocioData } from "@/lib/generateInvoicePDF";
 import QuickClientModal from "@/components/QuickClientModal";
 import PaymentModal from "@/components/PaymentModal";
@@ -49,7 +49,9 @@ const COMPROBANTE_TYPES = [
 export default function POS() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [ordenServicioId, setOrdenServicioId] = useState<string | null>(null);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [clienteId, setClienteId] = useState("");
   const [metodoPago, setMetodoPago] = useState("efectivo");
@@ -95,6 +97,37 @@ export default function POS() {
       }
     });
   }, [user]);
+
+  // Auto-load service from Orden de Servicio navigation
+  useEffect(() => {
+    const state = location.state as any;
+    if (!state?.ordenServicioId) return;
+
+    setOrdenServicioId(state.ordenServicioId);
+    setClienteId(state.clienteId || "");
+
+    // Add service line item directly (not from productos table)
+    const precio = Number(state.servicioPrecio) || 0;
+    const itbis = precio * ITBIS_RATE;
+    setLineas([{
+      producto_id: `os-${state.ordenServicioId}`,
+      nombre: state.servicioNombre || "Servicio de Reparación",
+      cantidad: 1,
+      precio_unitario: precio,
+      itbis,
+      subtotal: precio + itbis,
+      tipo: "servicio",
+      garantia: null,
+      condiciones_garantia: null,
+    }]);
+
+    if (state.servicioNotas) {
+      setNotas(state.servicioNotas);
+    }
+
+    // Clear location state to prevent re-loading on re-render
+    window.history.replaceState({}, document.title);
+  }, [location.state]);
 
   // Keyboard shortcut: focus search on F2
   useEffect(() => {
@@ -193,20 +226,30 @@ export default function POS() {
 
       if (facError) throw facError;
 
-      const detalles = lineas.map(l => ({
-        factura_id: factura.id, producto_id: l.producto_id,
-        cantidad: l.cantidad, precio_unitario: l.precio_unitario,
-        itbis: l.itbis, subtotal: l.subtotal,
-      }));
-
-      const { error: detError } = await supabase.from("detalle_facturas").insert(detalles);
-      if (detError) throw detError;
+      // Only insert detail rows for real products (not virtual service lines from ordenes)
+      const realLineas = lineas.filter(l => !l.producto_id.startsWith("os-"));
+      if (realLineas.length > 0) {
+        const detalles = realLineas.map(l => ({
+          factura_id: factura.id, producto_id: l.producto_id,
+          cantidad: l.cantidad, precio_unitario: l.precio_unitario,
+          itbis: l.itbis, subtotal: l.subtotal,
+        }));
+        const { error: detError } = await supabase.from("detalle_facturas").insert(detalles);
+        if (detError) throw detError;
+      }
 
       // Only decrement stock for products, NOT services
       for (const l of lineas) {
-        if (l.tipo !== "servicio") {
+        if (l.tipo !== "servicio" && !l.producto_id.startsWith("os-")) {
           await supabase.rpc("decrement_stock" as any, { p_id: l.producto_id, amount: l.cantidad });
         }
+      }
+
+      // Link factura to orden de servicio if applicable
+      if (ordenServicioId) {
+        await supabase.from("ordenes_servicio")
+          .update({ factura_id: factura.id, estado: "listo" } as any)
+          .eq("id", ordenServicioId);
       }
 
       const cliente = clientes.find(c => c.id === clienteId);
@@ -230,6 +273,7 @@ export default function POS() {
       // Reset for next sale
       setLineas([]);
       setClienteId("");
+      setOrdenServicioId(null);
       setDescuento("0");
       setNotas("");
       setProductSearch("");

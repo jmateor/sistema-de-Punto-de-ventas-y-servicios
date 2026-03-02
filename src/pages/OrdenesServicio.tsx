@@ -182,13 +182,31 @@ export default function OrdenesServicio() {
   };
 
   const handleEnviarFacturar = (orden: Orden) => {
+    // Validate that the order has charges
+    if (!orden.costo_estimado || orden.costo_estimado <= 0) {
+      toast.error("No se puede generar factura: la orden de servicio no tiene cargos registrados.");
+      return;
+    }
+
+    // Build service description with diagnostic info
+    const descripcion = [
+      `Reparación: ${orden.equipo_descripcion}`,
+      orden.marca ? `(${orden.marca}${orden.modelo ? ` ${orden.modelo}` : ""})` : "",
+    ].filter(Boolean).join(" ");
+
+    const notasOrden = [
+      orden.diagnostico ? `Diagnóstico: ${orden.diagnostico}` : "",
+      orden.notas ? `Notas: ${orden.notas}` : "",
+    ].filter(Boolean).join(" | ");
+
     // Navigate to POS with pre-filled service info
     navigate("/pos", {
       state: {
         ordenServicioId: orden.id,
         clienteId: orden.cliente_id,
-        servicioNombre: `Reparación: ${orden.equipo_descripcion}`,
+        servicioNombre: descripcion,
         servicioPrecio: orden.costo_estimado,
+        servicioNotas: notasOrden,
       },
     });
   };

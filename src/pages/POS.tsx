@@ -248,7 +248,7 @@ export default function POS() {
       // Link factura to orden de servicio if applicable
       if (ordenServicioId) {
         await supabase.from("ordenes_servicio")
-          .update({ factura_id: factura.id, estado: "listo" } as any)
+          .update({ factura_id: factura.id, estado: "pagado" } as any)
           .eq("id", ordenServicioId);
       }
 
